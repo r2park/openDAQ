@@ -1,6 +1,7 @@
 #include <SD.h>
-#include <Canbus.h>
 #include <SPI.h>
+#include <Canbus.h>
+#include <TinyGPS++.h>
 
 
 /* Define Joystick connection */
@@ -11,11 +12,14 @@
 #define LEFT   A5
 
 #define MAX_FILENAME_LEN 100 //bytes
+#define NAN_STRING "NaN, "
+#define DELIMIT_CHAR ", "
 
 const int sdcard_CS = 53;
 const int can_INT = 48; // INT pin of mcp2515
 
-
+static TinyGPSPlus gps;
+static const uint32_t GPSBaud = 115200;
 
 char canBuffer[512];  //Data will be temporarily stored to this buffer before being written to the file
 char lat_str[14];
@@ -47,6 +51,7 @@ void setup() {
   attachInterrupt(0, logger_ISR, FALLING);
 
   Serial.begin(115200);
+  Serial1.begin(GPSBaud);
 
   pinMode(LED3, OUTPUT);
 
@@ -72,48 +77,61 @@ void setup() {
   } else {
     Serial.println("OK");
   }
-
-  delay(1000); 
 }
 
 void loop() {
+  while (Serial1.available() > 0) {
+    if (gps.encode(Serial1.read())) {
+    }
+  }
+  
   if (isLogging) {
-    String dataString = "";
-    dataString += String(millis());
-    dataString += ',';
-    Serial.println("here");
-
     digitalWrite(LED3, HIGH);
 
-    if(Canbus.ecu_req(ENGINE_RPM,canBuffer) == 1) {
-      Serial.print("RPM: ");
-      Serial.println(canBuffer);  
-      dataString += String(canBuffer);
-      dataString += ',';
-    } 
+    String dataString = "";
+    dataString += String(millis());
+    dataString += DELIMIT_CHAR;
+    char charVal[20];               //temporarily holds data from vals 
+    String stringVal;     //data on buff is copied to this string
 
-    if(Canbus.ecu_req(VEHICLE_SPEED,canBuffer) == 1) {
-      Serial.print("Speed:  ");
-      Serial.println(canBuffer); 
+    stringVal = dtostrf(gps.location.lat(), 4, 6, charVal);  //4 is mininum width, 3 is precision; float value is copied onto buff
+    dataString += stringVal;
+    dataString += DELIMIT_CHAR;
+    stringVal = dtostrf(gps.location.lng(), 4, 6, charVal);  //4 is mininum width, 3 is precision; float value is copied onto buff
+    dataString += stringVal;
+    dataString += DELIMIT_CHAR;
+
+
+    if(Canbus.ecu_req(ENGINE_RPM,canBuffer) == 1) {
       dataString += String(canBuffer);
-      dataString += ',';
+      dataString += DELIMIT_CHAR;
+    } else {
+      dataString += NAN_STRING;
     }
 
-    if(Canbus.ecu_req(ENGINE_COOLANT_TEMP,canBuffer) == 1) {
-      Serial.print("Coolant Temp:  ");
-      Serial.println(canBuffer);  
+    if(Canbus.ecu_req(VEHICLE_SPEED,canBuffer) == 1) {
       dataString += String(canBuffer);
-      dataString += ',';
+      dataString += DELIMIT_CHAR;
+    } else {
+      dataString += NAN_STRING;
+    }
+
+
+    if(Canbus.ecu_req(ENGINE_COOLANT_TEMP,canBuffer) == 1) {
+      dataString += String(canBuffer);
+      dataString += DELIMIT_CHAR;
+    } else {
+      dataString += NAN_STRING;
     }
 
     if(Canbus.ecu_req(THROTTLE,canBuffer) == 1) {
-      Serial.print("Throttle: ");
-      Serial.println(canBuffer);  
       dataString += String(canBuffer);
-    } 
+    } else {
+      dataString += NAN_STRING;
+    }
 
-    digitalWrite(LED3, LOW); 
 
+    Serial.println(dataString);
     sprintf(logFile, "lf%d.csv", logFileNum);
     File dataFile = SD.open(logFile, FILE_WRITE);
 
@@ -123,5 +141,7 @@ void loop() {
     } else {
       Serial.println("error opening datalog.txt");
     }
+
+    digitalWrite(LED3, LOW); 
   }
 }
