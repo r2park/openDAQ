@@ -97,6 +97,61 @@ return 1;
  
 }
 
+char CanbusClass::ecu_scan(unsigned char pid,  char *buffer) 
+{
+	tCAN message;
+	float engine_data;
+	int timeout = 0;
+	char message_ok = 0;
+	// Prepair message
+	message.id = PID_REQUEST;
+	message.header.rtr = 0;
+	message.header.length = 8;
+	message.data[0] = 0x02;
+	message.data[1] = 0x01;
+	message.data[2] = pid;
+	message.data[3] = 0x00;
+	message.data[4] = 0x00;
+	message.data[5] = 0x00;
+	message.data[6] = 0x00;
+	message.data[7] = 0x00;						
+	
+
+	mcp2515_bit_modify(CANCTRL, (1<<REQOP2)|(1<<REQOP1)|(1<<REQOP0), 0);
+//		SET(LED2_HIGH);	
+	//if (mcp2515_send_message(&message)) {
+	//}
+	
+	while(timeout < 4000)
+	{
+		timeout++;
+				if (mcp2515_check_message()) 
+				{
+
+					if (mcp2515_get_message(&message)) 
+					{
+                        //361, 372, 63b, 152,18,282,370,d3
+                        if (message.id == 0x63b) {
+                                sprintf(buffer,"[%x] %x %x %x %x %x %x %x %x \r\n",message.id , 
+                                        (int)message.data[0], 
+                                        (int)message.data[1], 
+                                        (int)message.data[2], 
+                                        (int)message.data[3],
+                                        (int)message.data[4],
+                                        (int)message.data[5],
+                                        (int)message.data[6],
+                                        (int)message.data[7]
+                                        );
+								message_ok = 1;
+
+                    }
+					}
+				}
+	}
+ 	return 0;
+}
+
+
 char CanbusClass::ecu_req(unsigned char pid,  char *buffer) 
 {
 	tCAN message;
@@ -165,6 +220,11 @@ char CanbusClass::ecu_req(unsigned char pid,  char *buffer)
 									engine_data = (message.data[3]*100)/255;
 									sprintf(buffer,"%d",(int) engine_data);
 									break;
+
+                                    case ACCELERATOR:
+                                    engine_data = (message.data[3]*100)/255;
+									sprintf(buffer,"%d",(int) engine_data);
+                                    break;
 							
 								}
 								message_ok = 1;
