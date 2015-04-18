@@ -32,7 +32,9 @@ class CanbusClass
 	char message_tx(void);
 	char message_rx(unsigned char *buffer);
 	char ecu_req(unsigned char pid,  char *buffer);
-	char ecu_scan(unsigned char pid,  char *buffer);
+	char ecu_scan(int canID,  char *buffer);
+    char get_brake_pressure(char *buffer);
+    char get_steering_angle(char *buffer);
 private:
 	
 };

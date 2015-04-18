@@ -16,6 +16,7 @@
 #define DELIMIT_CHAR ", "
 
 const int sdcard_CS = 53;
+const int accel_CS = 45;
 const int can_INT = 48; // INT pin of mcp2515
 
 static TinyGPSPlus gps;
@@ -102,34 +103,46 @@ void loop() {
     dataString += DELIMIT_CHAR;
 
 
-    if(Canbus.ecu_req(ENGINE_RPM,canBuffer) == 1) {
+    if(Canbus.ecu_req(ENGINE_RPM, canBuffer) == 1) {
       dataString += String(canBuffer);
       dataString += DELIMIT_CHAR;
     } else {
       dataString += NAN_STRING;
     }
 
-    if(Canbus.ecu_req(VEHICLE_SPEED,canBuffer) == 1) {
+    if(Canbus.ecu_req(VEHICLE_SPEED, canBuffer) == 1) {
       dataString += String(canBuffer);
       dataString += DELIMIT_CHAR;
     } else {
       dataString += NAN_STRING;
     }
 
-
-    if(Canbus.ecu_req(ENGINE_COOLANT_TEMP,canBuffer) == 1) {
+    if(Canbus.ecu_req(ACCELERATOR, canBuffer) == 1) {
       dataString += String(canBuffer);
       dataString += DELIMIT_CHAR;
     } else {
       dataString += NAN_STRING;
     }
 
-    if(Canbus.ecu_req(THROTTLE,canBuffer) == 1) {
+    if(Canbus.get_brake_pressure(canBuffer) == 1) {
       dataString += String(canBuffer);
+      dataString += DELIMIT_CHAR;
     } else {
       dataString += NAN_STRING;
     }
 
+    if(Canbus.get_steering_angle(canBuffer) == 1) {
+      dataString += String(canBuffer);
+      dataString += DELIMIT_CHAR;
+    } else {
+      dataString += NAN_STRING;
+    }
+
+    // Clear current screen 
+    Serial.write(27);
+    Serial.print("[2J");
+    Serial.write(27);
+    Serial.print("[H");
 
     Serial.println(dataString);
     sprintf(logFile, "lf%d.csv", logFileNum);

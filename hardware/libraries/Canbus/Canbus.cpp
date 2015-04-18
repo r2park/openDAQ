@@ -97,58 +97,86 @@ return 1;
  
 }
 
-char CanbusClass::ecu_scan(unsigned char pid,  char *buffer) 
+char CanbusClass::get_steering_angle(char *buffer) 
 {
-	tCAN message;
-	float engine_data;
-	int timeout = 0;
-	char message_ok = 0;
-	// Prepair message
-	message.id = PID_REQUEST;
-	message.header.rtr = 0;
-	message.header.length = 8;
-	message.data[0] = 0x02;
-	message.data[1] = 0x01;
-	message.data[2] = pid;
-	message.data[3] = 0x00;
-	message.data[4] = 0x00;
-	message.data[5] = 0x00;
-	message.data[6] = 0x00;
-	message.data[7] = 0x00;						
-	
+    tCAN message;
+    int timeout = 0;
+    int steering_angle;
+    char message_ok = 0;
 
-	mcp2515_bit_modify(CANCTRL, (1<<REQOP2)|(1<<REQOP1)|(1<<REQOP0), 0);
-//		SET(LED2_HIGH);	
-	//if (mcp2515_send_message(&message)) {
-	//}
-	
-	while(timeout < 4000)
-	{
-		timeout++;
-				if (mcp2515_check_message()) 
-				{
+    mcp2515_bit_modify(CANCTRL, (1<<REQOP2)|(1<<REQOP1)|(1<<REQOP0), 0);
 
-					if (mcp2515_get_message(&message)) 
-					{
-                        //361, 372, 63b, 152,18,282,370,d3
-                        if (message.id == 0x63b) {
-                                sprintf(buffer,"[%x] %x %x %x %x %x %x %x %x \r\n",message.id , 
-                                        (int)message.data[0], 
-                                        (int)message.data[1], 
-                                        (int)message.data[2], 
-                                        (int)message.data[3],
-                                        (int)message.data[4],
-                                        (int)message.data[5],
-                                        (int)message.data[6],
-                                        (int)message.data[7]
-                                        );
-								message_ok = 1;
+    while(timeout < 4000) {
+        timeout++;
+        if (mcp2515_check_message()) {
+            if (mcp2515_get_message(&message)) {
+                if (message.id == 0x18) {
+                    steering_angle = message.data[1];
+                    steering_angle = (steering_angle << 8) | message.data[0];
+                    sprintf(buffer,"%d", message.id, steering_angle);
+                    message_ok = 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
 
-                    }
-					}
-				}
-	}
- 	return 0;
+char CanbusClass::get_brake_pressure(char *buffer) 
+{
+    tCAN message;
+    int timeout = 0;
+    char message_ok = 0;
+
+    mcp2515_bit_modify(CANCTRL, (1<<REQOP2)|(1<<REQOP1)|(1<<REQOP0), 0);
+
+    while(timeout < 4000) {
+        timeout++;
+        if (mcp2515_check_message()) {
+            if (mcp2515_get_message(&message)) {
+                if (message.id == 0xD1) {
+                    sprintf(buffer,"%d", message.id, (int)message.data[2]);
+                    message_ok = 1;
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+char CanbusClass::ecu_scan(int canID,  char *buffer) 
+{
+    tCAN message;
+    float engine_data;
+    int timeout = 0;
+    char message_ok = 0;
+
+    mcp2515_bit_modify(CANCTRL, (1<<REQOP2)|(1<<REQOP1)|(1<<REQOP0), 0);
+
+    while(timeout < 4000) {
+        timeout++;
+        if (mcp2515_check_message()) {
+            if (mcp2515_get_message(&message)) {
+                if (message.id == canID) {
+                    sprintf(buffer,"[%x] %x %x %x %x %x %x %x %x \r\n",
+                            message.id , 
+                            (int)message.data[0], 
+                            (int)message.data[1], 
+                            (int)message.data[2], 
+                            (int)message.data[3],
+                            (int)message.data[4],
+                            (int)message.data[5],
+                            (int)message.data[6],
+                            (int)message.data[7]
+                           );
+                    message_ok = 1;
+
+                }
+            }
+        }
+    }
+    return 0;
 }
 
 
