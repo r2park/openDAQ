@@ -1,7 +1,7 @@
 #include <SD.h>
 #include <SPI.h>
 #include <Wire.h>
-
+#include <Canbus.h>
 #include <mcp_can.h>
 #include <TinyGPS++.h>
 #include <LiquidCrystal_I2C.h>
@@ -115,14 +115,6 @@ void setup() {
   } else {
     Serial.println("OK");
   }
-
-  if(Canbus.init(CANSPEED_500))  /* Initialise MCP2515 CAN controller at the specified speed */
-  {
-    Serial.print("CAN Init ok");
-  } else
-  {
-    Serial.print("Can't init CAN");
-  } 
 }
 
 void loop() {
@@ -136,16 +128,16 @@ void loop() {
   dataString += String(millis());
   dataString += DELIMIT_CHAR;
   char charVal[20];               //temporarily holds data from vals 
-  String stringVal;     //data on buff is copied to this string
+  String latString, lonString, spdString;     //GPS data
 
-  stringVal = gps.location.isValid() ? dtostrf(gps.location.lat(), 4, 6, charVal) : "*";  //4 is mininum width, 6 is precision
-  dataString += stringVal;
+  latString = gps.location.isValid() ? dtostrf(gps.location.lat(), 4, 6, charVal) : "0.0";  //4 is mininum width, 6 is precision
+  dataString += latString;
   dataString += DELIMIT_CHAR;
-  stringVal = gps.location.isValid() ? dtostrf(gps.location.lng(), 4, 6, charVal) : "*";  //4 is mininum width, 6 is precision
-  dataString += stringVal;
+  lonString = gps.location.isValid() ? dtostrf(gps.location.lng(), 4, 6, charVal) : "0.0";  //4 is mininum width, 6 is precision
+  dataString += lonString;
   dataString += DELIMIT_CHAR;
-  stringVal = gps.speed.isValid() ? dtostrf(gps.speed.kmph(), 4, 2, charVal) : "*";  //4 is mininum width, 6 is precision
-  dataString += stringVal;
+  spdString = gps.speed.isValid() ? dtostrf(gps.speed.kmph(), 4, 2, charVal) : "0.0";  //4 is mininum width, 6 is precision
+  dataString += spdString;
   dataString += DELIMIT_CHAR;
 
   bool hasSpeed = false;
@@ -161,7 +153,7 @@ void loop() {
   unsigned int speedKPH;
   unsigned int rpm;
   int steeringAngle;
-  int x, y, z;
+  float x, y, z;
 
   while (!hasRPM || !hasAccel || !hasSteering || !hasBrake) {
     if(!digitalRead(can_INT)) {
@@ -174,11 +166,11 @@ void loop() {
 //            sprintf(speed_buf, "%d, ", speedKPH);
 //            hasSpeed = true;
 //            break;
-        /*case 0x360: // RPM*/
-          /*rpm = ((int)rxBuf[1] << 8) | rxBuf[0];*/
-          /*sprintf(rpm_buf, "%d, ", rpm);*/
-          /*hasRPM = true;*/
-          /*break;*/
+        case 0x360: // RPM
+          rpm = ((unsigned int)rxBuf[1] << 8) | rxBuf[0];
+          sprintf(rpm_buf, "%d, ", rpm);
+          hasRPM = true;
+          break;
         case 0xd1: // Brake Pressure
           sprintf(brake, "%d, ", rxBuf[2]);
           hasBrake = true;
@@ -197,19 +189,15 @@ void loop() {
     }
   }
 
-  if(Canbus.ecu_req(ENGINE_RPM,buffer) == 1) {
-    dataString += String(buffer);
-    dataString += DELIMIT_CHAR;
-  }
   // Read all 6 accelerometer registers
   readI2C(DATAX0, 6, accel_buf);
   // Convert 2-bytes into a 10-bit signed value
-  x = (((int)accel_buf[1]) << 8) | accel_buf[0];   
-  y = (((int)accel_buf[3]) << 8) | accel_buf[2];
-  z = (((int)accel_buf[5]) << 8) | accel_buf[4];
+  x = ((((int)accel_buf[1]) << 8) | accel_buf[0]) / 255.0 ;   
+  y = ((((int)accel_buf[3]) << 8) | accel_buf[2]) / 255.0;
+  z = ((((int)accel_buf[5]) << 8) | accel_buf[4]) / 255.0;
 
  // dataString += String(speed_buf);
-//    dataString += String(rpm_buf);
+  dataString += String(rpm_buf);
   dataString += String(brake);
   dataString += String(accel);
   dataString += String(steering);
@@ -226,18 +214,6 @@ void loop() {
   Serial.print("[H");
 
   Serial.println(dataString);
-
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print(stringVal);
-  lcd.setCursor(7,0);
-  lcd.print(String(buffer));
-  lcd.setCursor(0,1);
-  lcd.print(String(x));
-  lcd.setCursor(6,1);
-  lcd.print(String(y));
-  lcd.setCursor(13,1);
-  lcd.print(String(y));
    
   if (isLogging) {
     sprintf(logFile, "lf%d.csv", logFileNum);
