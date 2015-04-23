@@ -19,24 +19,24 @@ LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars
 // Device address for ADXL345 accelerometer as specified in data sheet 
 #define DEVICE (0x53) 
 byte accel_buf[6];
-char POWER_CTL = 0x2D;	//Power Control Register
-char DATA_FORMAT = 0x31;
-char DATAX0 = 0x32;	//X-Axis Data 0
-char DATAX1 = 0x33;	//X-Axis Data 1
-char DATAY0 = 0x34;	//Y-Axis Data 0
-char DATAY1 = 0x35;	//Y-Axis Data 1
-char DATAZ0 = 0x36;	//Z-Axis Data 0
-char DATAZ1 = 0x37;	//Z-Axis Data 1
+static const char POWER_CTL = 0x2D;	//Power Control Register
+static const char DATA_FORMAT = 0x31;
+static const char DATAX0 = 0x32;	//X-Axis Data 0
+static const char DATAX1 = 0x33;	//X-Axis Data 1
+static const char DATAY0 = 0x34;	//Y-Axis Data 0
+static const char DATAY1 = 0x35;	//Y-Axis Data 1
+static const char DATAZ0 = 0x36;	//Z-Axis Data 0
+static const char DATAZ1 = 0x37;	//Z-Axis Data 1
 
 // CSV log file definitions
-#define MAX_FILENAME_LEN 100 //bytes
+static const int MAX_FILENAME_LEN = 100; //bytes
 #define NAN_STRING "NaN, "
 #define DELIMIT_CHAR ", "
 
-const int CAN_CS = 49;
-const int sdcard_CS = 53;
-const int accel_CS = 45;
-const int can_INT = 48; // INT pin of mcp2515
+static const int CAN_CS = 49;
+static const int sdcard_CS = 53;
+static const int accel_CS = 45;
+static const int can_INT = 48; // INT pin of mcp2515
 
 long unsigned int rxId;
 unsigned char len = 0;
@@ -44,13 +44,15 @@ unsigned char rxBuf[8];
 
 static TinyGPSPlus gps;
 static const uint32_t GPSBaud = 115200;
+unsigned char request_rpm[8] = {0x02, 0x01, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00};
+unsigned char request_speed[8] = {0x02, 0x01, 0x0D, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 char canBuffer[512];  //Data will be temporarily stored to this buffer before being written to the file
 char lat_str[14];
 char lon_str[14];
 
-int LED2 = 47;
-int LED3 = 46;
+static const int LED2 = 47;
+static const int LED3 = 46;
 
 volatile int isLogging = LOW;
 volatile int logFileNum = 0;
@@ -153,23 +155,36 @@ void loop() {
   unsigned int speedKPH;
   unsigned int rpm;
   int steeringAngle;
+  int obd_speed;
   float x, y, z;
+  unsigned int count = 0;
 
-  while (!hasRPM || !hasAccel || !hasSteering || !hasBrake) {
+
+  while (!hasSpeed || !hasRPM || !hasAccel || !hasSteering || !hasBrake) {
+    count++;
+    if (count % 10 == 0) {
+      if (!hasSpeed) {
+        CAN0.sendMsgBuf(0x7DF, 0, 8, request_speed);
+      } else if (!hasRPM) {
+        // Request engine RPM with PID 0x0C
+        CAN0.sendMsgBuf(0x7DF, 0, 8, request_rpm);
+      }
+    }
     if(!digitalRead(can_INT)) {
       CAN0.readMsgBuf(&len, rxBuf);
       rxId = CAN0.getCanId();
-      //Serial.println(String(rxId));
+      /*Serial.println(rxId);*/
       switch (rxId) {
-//          case 0x370: // Speed in Kilometers Per Hour (KPH)
-//            speedKPH = rxBuf[5];
-//            sprintf(speed_buf, "%d, ", speedKPH);
-//            hasSpeed = true;
-//            break;
-        case 0x360: // RPM
-          rpm = ((unsigned int)rxBuf[1] << 8) | rxBuf[0];
-          sprintf(rpm_buf, "%d, ", rpm);
-          hasRPM = true;
+        case 0x7E8: // PID Reply
+          if (rxBuf[2] == 0x0C) {
+            rpm = ((rxBuf[3]*256) + rxBuf[4])/4;
+            sprintf(rpm_buf, "%d, ", rpm);
+            hasRPM = true;
+          } else if (rxBuf[2] == 0x0D) {
+            obd_speed = rxBuf[3];
+            sprintf(speed_buf, "%d, ", obd_speed);
+            hasSpeed = true;
+          }
           break;
         case 0xd1: // Brake Pressure
           sprintf(brake, "%d, ", rxBuf[2]);
@@ -196,7 +211,7 @@ void loop() {
   y = ((((int)accel_buf[3]) << 8) | accel_buf[2]) / 255.0;
   z = ((((int)accel_buf[5]) << 8) | accel_buf[4]) / 255.0;
 
- // dataString += String(speed_buf);
+  dataString += String(speed_buf);
   dataString += String(rpm_buf);
   dataString += String(brake);
   dataString += String(accel);
