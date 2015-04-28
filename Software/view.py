@@ -1,10 +1,10 @@
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from PyQt4.QtWebKit import *
-'''
+
 from pyqtgraph.Qt import QtGui, QtCore
 import numpy as np
-import pyqtgraph as pg'''
+import pyqtgraph as pg
 import csv
 
 import sys
@@ -226,8 +226,9 @@ class main_view(QDialog):
         clsbutton.clicked.connect(self.close)
         impbutton.clicked.connect(self.import_data)
 
-        '''sample_list= ["1","2","3","4","5"]
-        pg.plot(sample_list)'''
+        sample_list= [1,2,3,4,5,6,7,8,9,10]
+        pw = pg.plot(sample_list)
+        layout.addWidget(pw,4,0)
 
 
 
