@@ -1,12 +1,11 @@
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from PyQt4.QtWebKit import *
-from apiclient.discovery import build
-
-
-
-import googlemaps
-from googlemaps import client as _client
+'''
+from pyqtgraph.Qt import QtGui, QtCore
+import numpy as np
+import pyqtgraph as pg'''
+import csv
 
 import sys
 
@@ -16,7 +15,7 @@ class main_view(QDialog):
         QDialog.__init__(self)
         layout = QGridLayout()
 
-        self.setWindowTitle("Car logging System")
+        self.setWindowTitle("openDAQ")
         Gmaps = QWebView();
         html = '''
         <!DOCTYPE html>
@@ -211,27 +210,49 @@ class main_view(QDialog):
         </html>
         '''
 
-
         Gmaps.setHtml(html)
-        label = QLabel("Main page")
-        lineEdit = QLineEdit()
         impbutton = QPushButton("Import log")
         clsbutton = QPushButton("Close")
+        self.tbwidget  = QTableWidget()
+        self.tbwidget.setMinimumHeight(300)
+
+
         layout.addWidget(Gmaps,2,0)
-        layout.addWidget(label,0,0)
-        layout.addWidget(lineEdit,0,1)
         layout.addWidget(clsbutton,1,1)
         layout.addWidget(impbutton,2,1)
+        layout.addWidget(self.tbwidget,3,0)
         self.setLayout(layout)
 
         clsbutton.clicked.connect(self.close)
         impbutton.clicked.connect(self.import_data)
-        lineEdit.textChanged.connect(label.setText)
+
+        '''sample_list= ["1","2","3","4","5"]
+        pg.plot(sample_list)'''
+
+
+
+
     def import_data(self):
         path = '.'
         self.Opdilog  = QFileDialog.getOpenFileName(self,"Select the file to import",directory =path, filter ="CSV files (*.csv)")
-
-
+        f = open(self.Opdilog)
+        rcount =  open(self.Opdilog)
+        readcsv = csv.reader(f)
+        readcsvcount = csv.reader(rcount)
+        headerNames = ["time","latitude","longitude","Speed","Speed 2","Engin RPM","Break Pedal","Accelerator pedal","Steering wheel","X axis g-force","Y axis g-force","Z axis g-force" ]
+        self.tbwidget.setColumnCount(len(headerNames))
+        self.tbwidget.setRowCount(sum(1 for rows in readcsvcount))
+        self.tbwidget.setHorizontalHeaderLabels(headerNames)
+        rowcount= 0
+        column= 0
+        for row in readcsv:
+            while column <len(headerNames):
+                item = QTableWidgetItem(row[column])
+                item.setFlags(Qt.ItemIsEnabled)
+                self.tbwidget.setItem(rowcount,column,item)
+                column = column+1
+            rowcount = rowcount+1
+            column = 0
 
 app = QApplication(sys.argv)
 dialog = main_view()
