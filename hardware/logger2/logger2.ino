@@ -16,8 +16,9 @@
 
 LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars and 2 line display
 
-// Device address for ADXL345 accelerometer as specified in data sheet 
-#define DEVICE (0x53) 
+/**********  Accelerometer ****************/
+// I2C Device address for ADXL345 accelerometer as specified in data sheet 
+static const int accel_addr = 0x53; 
 byte accel_buf[6];
 static const char POWER_CTL = 0x2D;	//Power Control Register
 static const char DATA_FORMAT = 0x31;
@@ -28,11 +29,12 @@ static const char DATAY1 = 0x35;	//Y-Axis Data 1
 static const char DATAZ0 = 0x36;	//Z-Axis Data 0
 static const char DATAZ1 = 0x37;	//Z-Axis Data 1
 
-// CSV log file definitions
-static const int MAX_FILENAME_LEN = 100; //bytes
-#define NAN_STRING "NaN, "
-#define DELIMIT_CHAR ", "
+/********** Thermometer *******************/
+// I2C Device address for MLX90614 IR thermometer as specified in data sheet  
+static const int therm_addr = 0x5A;
+byte therm_buf[6];
 
+/********** CAN Shield ********************/
 static const int CAN_CS = 49;
 static const int sdcard_CS = 53;
 static const int accel_CS = 45;
@@ -41,19 +43,25 @@ static const int can_INT = 48; // INT pin of mcp2515
 long unsigned int rxId;
 unsigned char len = 0;
 unsigned char rxBuf[8];
+char canBuffer[512];  //Data will be temporarily stored to this buffer before being written to the file
 
+MCP_CAN CAN0(CAN_CS);
+
+/*********** GPS **************************/
 static TinyGPSPlus gps;
 static const uint32_t GPSBaud = 115200;
 unsigned char request_rpm[8] = {0x02, 0x01, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00};
 unsigned char request_speed[8] = {0x02, 0x01, 0x0D, 0x00, 0x00, 0x00, 0x00, 0x00};
-
-char canBuffer[512];  //Data will be temporarily stored to this buffer before being written to the file
 char lat_str[14];
 char lon_str[14];
 
 static const int LED2 = 47;
 static const int LED3 = 46;
 
+/************ SD Card Logging ***************/
+static const int MAX_FILENAME_LEN = 100; //bytes
+#define NAN_STRING "NaN, "
+#define DELIMIT_CHAR ", "
 volatile int isLogging = LOW;
 volatile int logFileNum = 0;
 char logFile [MAX_FILENAME_LEN];
@@ -75,7 +83,6 @@ void logger_ISR(void) {
   last_interrupt_time = interrupt_time;
 }
 
-MCP_CAN CAN0(CAN_CS);
 
 void setup() {
   attachInterrupt(1, logger_ISR, FALLING); //interrupt on pin 3 of Mega2560
@@ -102,7 +109,7 @@ void setup() {
   Serial.print("Initializing Accelerometer...");
   Wire.begin();
   //Put the ADXL345 into Measurement Mode by writing 0x08 to the POWER_CTL register.
-  writeI2C(POWER_CTL, 0x08);
+  writeI2C(accel_addr, POWER_CTL, 0x08);
   Serial.println("OK");
 
   Serial.print("Initializing CAN controller...");
@@ -120,28 +127,9 @@ void setup() {
 }
 
 void loop() {
-  // Read incoming GPS data
-  while (Serial1.available() > 0) {
-    if (gps.encode(Serial1.read())) {
-    }
-  }
-    
   String dataString = "";
-  dataString += String(millis());
-  dataString += DELIMIT_CHAR;
   char charVal[20];               //temporarily holds data from vals 
   String latString, lonString, spdString;     //GPS data
-
-  latString = gps.location.isValid() ? dtostrf(gps.location.lat(), 4, 6, charVal) : "0.0";  //4 is mininum width, 6 is precision
-  dataString += latString;
-  dataString += DELIMIT_CHAR;
-  lonString = gps.location.isValid() ? dtostrf(gps.location.lng(), 4, 6, charVal) : "0.0";  //4 is mininum width, 6 is precision
-  dataString += lonString;
-  dataString += DELIMIT_CHAR;
-  spdString = gps.speed.isValid() ? dtostrf(gps.speed.kmph(), 4, 2, charVal) : "0.0";  //4 is mininum width, 6 is precision
-  dataString += spdString;
-  dataString += DELIMIT_CHAR;
-
   bool hasSpeed = false;
   bool hasRPM = false;
   bool hasAccel = false;
@@ -157,10 +145,14 @@ void loop() {
   int steeringAngle;
   int obd_speed;
   float x, y, z;
+  float temp;
   unsigned int count = 0;
 
-
   while (!hasSpeed || !hasRPM || !hasAccel || !hasSteering || !hasBrake) {
+    while (Serial1.available() > 0) {
+      if (gps.encode(Serial1.read())) {
+      }
+    }
     count++;
     if (count % 10 == 0) {
       if (!hasSpeed) {
@@ -203,9 +195,21 @@ void loop() {
       }
     }
   }
+    dataString += String(millis());
+    dataString += DELIMIT_CHAR;
+    // Read incoming GPS data
+    latString = gps.location.isValid() ? dtostrf(gps.location.lat(), 4, 6, charVal) : "0.0";  //4 is mininum width, 6 is precision
+    dataString += latString;
+    dataString += DELIMIT_CHAR;
+    lonString = gps.location.isValid() ? dtostrf(gps.location.lng(), 4, 6, charVal) : "0.0";  //4 is mininum width, 6 is precision
+    dataString += lonString;
+    dataString += DELIMIT_CHAR;
+    spdString = gps.speed.isValid() ? dtostrf(gps.speed.kmph(), 4, 2, charVal) : "0.0";  //4 is mininum width, 6 is precision
+    dataString += spdString;
+    dataString += DELIMIT_CHAR;
 
   // Read all 6 accelerometer registers
-  readI2C(DATAX0, 6, accel_buf);
+  readI2C(accel_addr, DATAX0, 6, accel_buf);
   // Convert 2-bytes into a 10-bit signed value
   x = ((((int)accel_buf[1]) << 8) | accel_buf[0]) / 255.0 ;   
   y = ((((int)accel_buf[3]) << 8) | accel_buf[2]) / 255.0;
@@ -243,25 +247,25 @@ void loop() {
   }
 }
 
-void writeI2C(byte address, byte val) {
-  Wire.beginTransmission(DEVICE);  
+void writeI2C(int device, byte address, byte val) {
+  Wire.beginTransmission(device);  
   Wire.write(address);            
   Wire.write(val);               
   Wire.endTransmission();         
 }
 
-void readI2C(byte address, int num, byte accel_buf[]) {
+void readI2C(int device, byte address, int num, byte buffer[]) {
   int i = 0;
 
-  Wire.beginTransmission(DEVICE);
+  Wire.beginTransmission(device);
   Wire.write(address);          
   Wire.endTransmission();      
 
-  Wire.beginTransmission(DEVICE);
-  Wire.requestFrom(DEVICE, num);
+  Wire.beginTransmission(device);
+  Wire.requestFrom(device, num);
 
   while(Wire.available()) {    
-    accel_buf[i] = Wire.read();
+    buffer[i] = Wire.read();
     i++;
   }
   Wire.endTransmission();     
