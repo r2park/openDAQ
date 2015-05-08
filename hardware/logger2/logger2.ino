@@ -28,6 +28,9 @@ static const char DATAY0 = 0x34;	//Y-Axis Data 0
 static const char DATAY1 = 0x35;	//Y-Axis Data 1
 static const char DATAZ0 = 0x36;	//Z-Axis Data 0
 static const char DATAZ1 = 0x37;	//Z-Axis Data 1
+float xCal = 0.0;
+float yCal = 0.0;
+float zCal = 0.0;
 
 /********** Thermometer *******************/
 // I2C Device address for MLX90614 IR thermometer as specified in data sheet  
@@ -73,6 +76,7 @@ volatile int logFileNum = 0;
 char logFile [MAX_FILENAME_LEN];
 
 volatile bool canEnable = HIGH;
+volatile bool calAccel = LOW;
 
 void logger_ISR(void) {
   static unsigned long last_interrupt_time = 0;
@@ -106,9 +110,22 @@ void canEnable_ISR(void) {
   }
   last_interrupt_time = interrupt_time;
 }
+
+void calibrateAccelerometer_ISR(void) {
+  static unsigned long last_interrupt_time = 0;
+  unsigned long interrupt_time = millis();
+  // If interrupts come faster than 200ms, assume it's a bounce and ignore
+  if (interrupt_time - last_interrupt_time > 200) 
+  {
+    calAccel = !calAccel;
+  }
+  last_interrupt_time = interrupt_time;
+}
+
 void setup() {
-  attachInterrupt(1, logger_ISR, FALLING); //interrupt1 on pin 3 of Mega2560
-  attachInterrupt(5, canEnable_ISR, FALLING); //interrupt5 on pin 18 of Mega2560 
+  attachInterrupt(1, logger_ISR, FALLING); //interrupt1 on pin 3 of Mega2560 to CLICK
+  attachInterrupt(5, canEnable_ISR, FALLING); //interrupt5 on pin 18 of Mega2560 to UP
+  attachInterrupt(4, calibrateAccelerometer_ISR, FALLING); //interrupt5 on pin 19 of Mega2560 to DOWN
 
   lcd.init();
   lcd.backlight();
@@ -247,6 +264,15 @@ void loop() {
   x = ((((int)accel_buf[1]) << 8) | accel_buf[0]) / 255.0 ;   
   y = ((((int)accel_buf[3]) << 8) | accel_buf[2]) / 255.0;
   z = ((((int)accel_buf[5]) << 8) | accel_buf[4]) / 255.0;
+  if (calAccel) {
+    xCal = x;
+    yCal = y;
+    zCal = z;
+    calAccel = LOW;
+  }
+  x -= xCal;
+  y -= yCal;
+  z -= zCal;
 
   // Read IR thermometers
   readI2C(therm_addr, OBJ_TEMP, 3, therm_buf);
