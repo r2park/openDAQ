@@ -63,9 +63,14 @@ static const int LED3 = 46;
 static const int MAX_FILENAME_LEN = 100; //bytes
 #define NAN_STRING "NaN, "
 #define DELIMIT_CHAR ", "
-volatile int isLogging = LOW;
+
+
+/*********** Interrupts ***************/
+volatile bool isLogging = LOW;
 volatile int logFileNum = 0;
 char logFile [MAX_FILENAME_LEN];
+
+volatile bool canEnable = HIGH;
 
 void logger_ISR(void) {
   static unsigned long last_interrupt_time = 0;
@@ -84,17 +89,35 @@ void logger_ISR(void) {
   last_interrupt_time = interrupt_time;
 }
 
+void canEnable_ISR(void) {
+  static unsigned long last_interrupt_time = 0;
+  unsigned long interrupt_time = millis();
+  // If interrupts come faster than 200ms, assume it's a bounce and ignore
+  if (interrupt_time - last_interrupt_time > 200) 
+  {
+    canEnable = !canEnable;
+    if (canEnable) {
+      digitalWrite(LED2, HIGH);
+    } else {
+      digitalWrite(LED2, LOW); 
+    }
+  }
+  last_interrupt_time = interrupt_time;
+}
 void setup() {
-  attachInterrupt(1, logger_ISR, FALLING); //interrupt on pin 3 of Mega2560
+  attachInterrupt(1, logger_ISR, FALLING); //interrupt1 on pin 3 of Mega2560
+  attachInterrupt(5, canEnable_ISR, FALLING); //interrupt5 on pin 18 of Mega2560 
 
   lcd.init();
   lcd.backlight();
   lcd.print("Logger ON");
 
   Serial.begin(115200);
-  Serial1.begin(GPSBaud);
+  Serial2.begin(GPSBaud);
 
+  pinMode(LED2, OUTPUT);
   pinMode(LED3, OUTPUT);
+  digitalWrite(LED2, HIGH);
   digitalWrite(LED3, LOW);
 
   // joystick closes to ground
@@ -135,11 +158,11 @@ void loop() {
   bool hasAccel = false;
   bool hasSteering = false;
   bool hasBrake = false;
-  char speed_buf [10];
-  char rpm_buf [10];
-  char accel[10];
-  char steering[10];
-  char brake[10];
+  char speed_buf [10] = "0, ";
+  char rpm_buf [10] = "0, ";
+  char accel[10] = "0, ";
+  char steering[10] = "0, ";
+  char brake[10] = "0, ";
   unsigned int speedKPH;
   unsigned int rpm;
   int steeringAngle;
@@ -149,10 +172,13 @@ void loop() {
   unsigned int count = 0;
 
   while (!hasSpeed || !hasRPM || !hasAccel || !hasSteering || !hasBrake) {
-    while (Serial1.available() > 0) {
-      if (gps.encode(Serial1.read())) {
+    while (Serial2.available() > 0) {
+      if (gps.encode(Serial2.read())) {
       }
     }
+
+    if (!canEnable) break;
+
     count++;
     if (count % 10 == 0) {
       if (!hasSpeed) {
@@ -253,7 +279,7 @@ void loop() {
   }
 }
 
-float rawIRtoCelcius(char buffer[]) {
+float rawIRtoCelcius(byte buffer[]) {
   float tempCelcius;
   tempCelcius = (buffer[1] << 8) | (buffer[0]);
   tempCelcius = (tempCelcius * 0.02) - 0.01;
