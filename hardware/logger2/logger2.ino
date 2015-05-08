@@ -61,6 +61,8 @@ static const int LED3 = 46;
 
 /************ SD Card Logging ***************/
 static const int MAX_FILENAME_LEN = 100; //bytes
+int dirNum = 0;
+char dirName[MAX_FILENAME_LEN] = "0";
 #define NAN_STRING "NaN, "
 #define DELIMIT_CHAR ", "
 
@@ -146,6 +148,11 @@ void setup() {
     Serial.println("Card failed, or not present");
   } else {
     Serial.println("OK");
+    while(SD.exists(dirName)){
+      dirNum++;
+      sprintf(dirName, "%d", dirNum);
+    }
+    SD.mkdir(dirName);
   }
 }
 
@@ -267,7 +274,7 @@ void loop() {
   Serial.println(dataString);
    
   if (isLogging) {
-    sprintf(logFile, "lf%d.csv", logFileNum);
+    sprintf(logFile, "%d/lf%d.csv", dirNum, logFileNum);
     File dataFile = SD.open(logFile, FILE_WRITE);
 
     if (dataFile) {
