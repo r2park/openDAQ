@@ -32,6 +32,7 @@ static const char DATAZ1 = 0x37;	//Z-Axis Data 1
 /********** Thermometer *******************/
 // I2C Device address for MLX90614 IR thermometer as specified in data sheet  
 static const int therm_addr = 0x5A;
+static const char OBJ_TEMP = 0x07;
 byte therm_buf[6];
 
 /********** CAN Shield ********************/
@@ -82,7 +83,6 @@ void logger_ISR(void) {
   }
   last_interrupt_time = interrupt_time;
 }
-
 
 void setup() {
   attachInterrupt(1, logger_ISR, FALLING); //interrupt on pin 3 of Mega2560
@@ -145,7 +145,7 @@ void loop() {
   int steeringAngle;
   int obd_speed;
   float x, y, z;
-  float temp;
+  float tempCelcius;
   unsigned int count = 0;
 
   while (!hasSpeed || !hasRPM || !hasAccel || !hasSteering || !hasBrake) {
@@ -215,6 +215,10 @@ void loop() {
   y = ((((int)accel_buf[3]) << 8) | accel_buf[2]) / 255.0;
   z = ((((int)accel_buf[5]) << 8) | accel_buf[4]) / 255.0;
 
+  // Read IR thermometers
+  readI2C(therm_addr, OBJ_TEMP, 3, therm_buf);
+  tempCelcius = rawIRtoCelcius(therm_buf);
+
   dataString += String(speed_buf);
   dataString += String(rpm_buf);
   dataString += String(brake);
@@ -225,8 +229,10 @@ void loop() {
   dataString += String(y);
   dataString += DELIMIT_CHAR;
   dataString += String(z);
+  dataString += DELIMIT_CHAR;
+  dataString += tempCelcius;
 
-  // Clear current screen 
+  // Command sequence for clearing serial terminal screens
   Serial.write(27);
   Serial.print("[2J");
   Serial.write(27);
@@ -247,6 +253,15 @@ void loop() {
   }
 }
 
+float rawIRtoCelcius(char buffer[]) {
+  float tempCelcius;
+  tempCelcius = (buffer[1] << 8) | (buffer[0]);
+  tempCelcius = (tempCelcius * 0.02) - 0.01;
+  tempCelcius -= 273.15;
+  
+  return tempCelcius;
+}
+
 void writeI2C(int device, byte address, byte val) {
   Wire.beginTransmission(device);  
   Wire.write(address);            
@@ -259,7 +274,7 @@ void readI2C(int device, byte address, int num, byte buffer[]) {
 
   Wire.beginTransmission(device);
   Wire.write(address);          
-  Wire.endTransmission();      
+  Wire.endTransmission(false);      
 
   Wire.beginTransmission(device);
   Wire.requestFrom(device, num);
